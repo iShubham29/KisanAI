@@ -10,7 +10,8 @@ import com.kisanai.kisanaibackend.repository.TalukaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+
+import java.net.URL;
 
 @Service
 @RequiredArgsConstructor
@@ -28,11 +29,8 @@ public class DataLoaderService implements CommandLineRunner {
 
         if (stateRepository.count() > 0) return;
 
-        RestTemplate restTemplate = new RestTemplate();
         ObjectMapper mapper = new ObjectMapper();
-
-        String json = restTemplate.getForObject(DATA_API, String.class);
-        JsonNode countriesArray = mapper.readTree(json);
+        JsonNode countriesArray = mapper.readTree(new URL(DATA_API));
 
         int districtId = 1;
 
