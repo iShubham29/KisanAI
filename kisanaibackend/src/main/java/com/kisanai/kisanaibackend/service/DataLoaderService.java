@@ -44,7 +44,9 @@ public class DataLoaderService implements CommandLineRunner {
 
             for (JsonNode stateNode : statesArray) {
                 if (stateNode.get("id") == null || stateNode.get("name") == null) continue;
-                String stateCode = stateNode.get("state_code") != null ? stateNode.get("state_code").asText() : "";
+                String stateCode = stateNode.get("iso2") != null && !stateNode.get("iso2").asText().isEmpty()
+                        ? stateNode.get("iso2").asText()
+                        : stateNode.get("state_code") != null ? stateNode.get("state_code").asText() : "";
 
                 State state = State.builder()
                         .id(stateNode.get("id").asInt())

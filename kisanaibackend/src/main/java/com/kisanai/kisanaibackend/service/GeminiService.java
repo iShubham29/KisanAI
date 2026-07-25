@@ -3,9 +3,11 @@ package com.kisanai.kisanaibackend.service;
 import com.kisanai.kisanaibackend.dto.ChatRequestDTO;
 import com.kisanai.kisanaibackend.dto.ChatResponseDTO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor        // Constructor Injection
 public class GeminiService {
@@ -16,11 +18,18 @@ public class GeminiService {
     public ChatResponseDTO chat(ChatRequestDTO request) {
 
         String prompt = promptBuilderService.buildPrompt(request);  // Step 1 — Build prompt
+        log.info("Calling AI with prompt: {}", prompt);
 
-        String aiResponse = chatClient.prompt()     // Step 2 — Call Gemini API
-                .user(prompt)                       // Send prompt as user message
-                .call()                             // Make the API call
-                .content();                         // Extract text response
+        String aiResponse;
+        try {
+            aiResponse = chatClient.prompt()     // Step 2 — Call AI API
+                    .user(prompt)
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            log.error("AI API call failed: {}", e.getMessage(), e);
+            throw e;
+        }
 
         /*
         Your Spring Boot App
