@@ -8,11 +8,14 @@ import com.kisanai.kisanaibackend.repository.DistrictRepository;
 import com.kisanai.kisanaibackend.repository.StateRepository;
 import com.kisanai.kisanaibackend.repository.TalukaRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
 
+import java.net.HttpURLConnection;
 import java.net.URL;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DataLoaderService implements CommandLineRunner {
@@ -29,8 +32,20 @@ public class DataLoaderService implements CommandLineRunner {
 
         if (stateRepository.count() > 0) return;
 
+        log.info("Starting data load from: {}", DATA_API);
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode countriesArray = mapper.readTree(new URL(DATA_API));
+        JsonNode countriesArray;
+        try {
+            URL url = new URL(DATA_API);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(30000);
+            conn.setReadTimeout(120000);
+            countriesArray = mapper.readTree(conn.getInputStream());
+            log.info("Data fetched successfully, total countries: {}", countriesArray.size());
+        } catch (Exception e) {
+            log.error("Failed to fetch data: {}", e.getMessage(), e);
+            return;
+        }
 
         int districtId = 1;
 
