@@ -30,7 +30,7 @@ public class StartupListener {
 
     private void triggerDataLoad() {
         try {
-            dataLoaderServiceProvider.get().startLoadingIfNeeded();
+            dataLoaderServiceProvider.getObject().startLoadingIfNeeded();
         } catch (Exception e) {
             log.error("Failed to trigger data load: {}", e.getMessage(), e);
         }
