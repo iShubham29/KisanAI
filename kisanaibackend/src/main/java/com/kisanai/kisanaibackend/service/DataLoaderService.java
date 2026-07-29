@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
@@ -27,61 +30,98 @@ public class DataLoaderService implements CommandLineRunner {
     private static final String DATA_API =
             "https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/master/json/countries+states+cities.json";
 
-    @Override
-    public void run(String... args) throws Exception {
+    private final AtomicBoolean loaded = new AtomicBoolean(false);
+    private final AtomicBoolean loading = new AtomicBoolean(false);
+    private final CountDownLatch loadLatch = new CountDownLatch(1);
 
-        if (stateRepository.count() > 0) return;
+    public boolean isLoaded() {
+        return loaded.get();
+    }
 
-        log.info("Starting data load from: {}", DATA_API);
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode countriesArray;
+    public boolean awaitLoaded(long timeoutSeconds) {
+        if (loaded.get()) return true;
         try {
-            URL url = new URL(DATA_API);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(30000);
-            conn.setReadTimeout(120000);
-            countriesArray = mapper.readTree(conn.getInputStream());
-            log.info("Data fetched successfully, total countries: {}", countriesArray.size());
-        } catch (Exception e) {
-            log.error("Failed to fetch data: {}", e.getMessage(), e);
+            return loadLatch.await(timeoutSeconds, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return loaded.get();
+        }
+    }
+
+    @Override
+    public void run(String... args) {
+        if (stateRepository.count() > 0) {
+            loaded.set(true);
+            loadLatch.countDown();
             return;
         }
 
-        int districtId = 1;
+        if (loading.compareAndSet(false, true)) {
+            log.info("Starting data load asynchronously from: {}", DATA_API);
+            Thread loader = new Thread(this::loadData, "kisanai-data-loader");
+            loader.setDaemon(true);
+            loader.start();
+        }
+    }
 
-        for (JsonNode countryNode : countriesArray) {
-            if (!"India".equals(countryNode.get("name").asText())) continue;
-
-            JsonNode statesArray = countryNode.get("states");
-            if (statesArray == null) continue;
-
-            for (JsonNode stateNode : statesArray) {
-                if (stateNode.get("id") == null || stateNode.get("name") == null) continue;
-                String stateCode = stateNode.get("iso2") != null && !stateNode.get("iso2").asText().isEmpty()
-                        ? stateNode.get("iso2").asText()
-                        : stateNode.get("state_code") != null ? stateNode.get("state_code").asText() : "";
-
-                State state = State.builder()
-                        .id(stateNode.get("id").asInt())
-                        .name(stateNode.get("name").asText())
-                        .code(stateCode)
-                        .build();
-                stateRepository.save(state);
-
-                JsonNode citiesArray = stateNode.get("cities");
-                if (citiesArray == null) continue;
-
-                for (JsonNode cityNode : citiesArray) {
-                    if (cityNode.get("name") == null) continue;
-                    District district = District.builder()
-                            .id(districtId++)
-                            .name(cityNode.get("name").asText())
-                            .stateCode(stateCode)
-                            .build();
-                    districtRepository.save(district);
-                }
+    private void loadData() {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode countriesArray;
+            try {
+                URL url = new URL(DATA_API);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(30000);
+                conn.setReadTimeout(120000);
+                countriesArray = mapper.readTree(conn.getInputStream());
+                log.info("Data fetched successfully, total countries: {}", countriesArray.size());
+            } catch (Exception e) {
+                log.error("Failed to fetch data: {}", e.getMessage(), e);
+                return;
             }
-            break;
+
+            int districtId = 1;
+
+            for (JsonNode countryNode : countriesArray) {
+                if (!"India".equals(countryNode.get("name").asText())) continue;
+
+                JsonNode statesArray = countryNode.get("states");
+                if (statesArray == null) continue;
+
+                for (JsonNode stateNode : statesArray) {
+                    if (stateNode.get("id") == null || stateNode.get("name") == null) continue;
+                    String stateCode = stateNode.get("iso2") != null && !stateNode.get("iso2").asText().isEmpty()
+                            ? stateNode.get("iso2").asText()
+                            : stateNode.get("state_code") != null ? stateNode.get("state_code").asText() : "";
+
+                    State state = State.builder()
+                            .id(stateNode.get("id").asInt())
+                            .name(stateNode.get("name").asText())
+                            .code(stateCode)
+                            .build();
+                    stateRepository.save(state);
+
+                    JsonNode citiesArray = stateNode.get("cities");
+                    if (citiesArray == null) continue;
+
+                    for (JsonNode cityNode : citiesArray) {
+                        if (cityNode.get("name") == null) continue;
+                        District district = District.builder()
+                                .id(districtId++)
+                                .name(cityNode.get("name").asText())
+                                .stateCode(stateCode)
+                                .build();
+                        districtRepository.save(district);
+                    }
+                }
+                break;
+            }
+
+            log.info("Data loaded successfully. States: {}, Districts: {}",
+                    stateRepository.count(), districtRepository.count());
+            loaded.set(true);
+        } finally {
+            loadLatch.countDown();
         }
     }
 }

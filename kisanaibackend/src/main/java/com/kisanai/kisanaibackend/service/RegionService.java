@@ -17,8 +17,10 @@ public class RegionService {
     private final StateRepository stateRepository;        // Injected via constructor
     private final DistrictRepository districtRepository;
     private final TalukaRepository talukaRepository;
+    private final DataLoaderService dataLoaderService;
 
     public List<RegionResponseDTO> getAllStates() {
+        dataLoaderService.awaitLoaded(60);                // Wait up to 60s for async data load
         return stateRepository.findAll()                  // Fetch all states from DB
                 .stream()                                 // Stream API — functional style
                 .map(state -> RegionResponseDTO.builder() // Map Entity → DTO
