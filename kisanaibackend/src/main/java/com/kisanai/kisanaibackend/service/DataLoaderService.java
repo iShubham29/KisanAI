@@ -9,7 +9,6 @@ import com.kisanai.kisanaibackend.repository.StateRepository;
 import com.kisanai.kisanaibackend.repository.TalukaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
 
 import java.net.HttpURLConnection;
@@ -21,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class DataLoaderService implements CommandLineRunner {
+public class DataLoaderService {
 
     private final StateRepository stateRepository;
     private final DistrictRepository districtRepository;
@@ -48,11 +47,12 @@ public class DataLoaderService implements CommandLineRunner {
         }
     }
 
-    @Override
-    public void run(String... args) {
-        if (stateRepository.count() > 0) {
-            loaded.set(true);
-            loadLatch.countDown();
+    public void startLoadingIfNeeded() {
+        if (loaded.get() || stateRepository.count() > 0) {
+            if (!loaded.get()) {
+                loaded.set(true);
+                loadLatch.countDown();
+            }
             return;
         }
 
@@ -64,7 +64,7 @@ public class DataLoaderService implements CommandLineRunner {
         }
     }
 
-    private void loadData() {
+    public void loadData() {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode countriesArray;
