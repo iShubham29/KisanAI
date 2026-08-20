@@ -46,41 +46,121 @@ function getSectionColor(text) {
   return 'green'
 }
 
+function formatInline(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+}
+
 function renderLine(line, idx) {
-  const trimmed = line.trim()
+  let trimmed = line.trim()
   if (!trimmed) return null
 
-  const headerMatch = trimmed.match(/^\*\*(.+?)\*\*:?\s*$/)
-  const isNumbered = /^\d+\.\s/.test(trimmed)
+  if (/^(?:---|\*\*\*|___)\s*$/.test(trimmed)) {
+    return <hr key={idx} className="kisan-response-hr" />
+  }
 
-  if (headerMatch) {
-    const text = headerMatch[1]
+  if (trimmed.startsWith('> ')) trimmed = trimmed.slice(2).trim()
+  else if (trimmed.startsWith('>')) trimmed = trimmed.slice(1).trim()
+
+  const headingMatch = trimmed.match(/^(?:#{2,6}|\*\*)\s*(?:\d+\.\s*)?([^*]+?)(?:\*\*)?$/)
+  if (headingMatch) {
+    const text = headingMatch[1].trim()
     const emoji = getEmoji(text)
     const color = getSectionColor(text)
     return (
       <div key={idx} className={`kisan-response-section kisan-response-section--${color}`}>
         <span className="kisan-section-emoji">{emoji}</span>
-        <span className="kisan-section-title">{text}</span>
+        <span className="kisan-section-title"
+          dangerouslySetInnerHTML={{ __html: formatInline(text) }} />
       </div>
     )
   }
 
-  if (isNumbered) {
-    const withBold = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  const isNumbered = /^\d+\.\s/.test(trimmed)
+  const isBullet = /^[•*-]\s/.test(trimmed)
+
+  if (isNumbered || isBullet) {
+    const content = trimmed.replace(/^(\d+\.\s*|[•*-]\s*)/, '')
     return (
       <div key={idx} className="kisan-response-item"
-        dangerouslySetInnerHTML={{ __html: withBold }} />
+        dangerouslySetInnerHTML={{ __html: formatInline(content) }} />
     )
   }
 
-  const withBold = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
   return (
     <p key={idx} className="kisan-response-para"
-      dangerouslySetInnerHTML={{ __html: withBold }} />
+      dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }} />
   )
 }
 
-const API_BASE = '/api'
+function renderContent(text) {
+  const lines = text.split('\n')
+  const blocks = []
+  let i = 0
+  while (i < lines.length) {
+    const raw = lines[i]
+    const t = raw.trim()
+    if (!t) {
+      i++
+      continue
+    }
+    if (t.startsWith('|') && t.endsWith('|')) {
+      const tableLines = []
+      while (i < lines.length) {
+        const l = lines[i].trim()
+        if (l.startsWith('|') && l.endsWith('|')) {
+          tableLines.push(l)
+          i++
+        } else {
+          break
+        }
+      }
+      const contentRows = tableLines.filter(l =>
+        l.split('|').slice(1, -1).some(c => c.replace(/[-:\s]/g, '') !== '')
+      )
+      if (contentRows.length > 0) {
+        const colCount = Math.max(...contentRows.map(l => l.split('|').length - 2))
+        const hasHeader = tableLines.some(l =>
+          l.split('|').slice(1, -1).every(c => c.replace(/[-:\s]/g, '') === '')
+        )
+        blocks.push({ type: 'table', rows: contentRows, colCount, hasHeader })
+      }
+      continue
+    }
+    blocks.push({ type: 'line', content: t })
+    i++
+  }
+
+  return blocks.map((block, idx) => {
+    if (block.type === 'table') {
+      return (
+        <table key={`tbl-${idx}`} className="kisan-response-table">
+          <tbody>
+            {block.rows.map((row, r) => {
+              const cells = row.split('|').slice(1, -1).map(c => c.trim())
+              while (cells.length < block.colCount) cells.push('')
+              const isHeader = block.hasHeader && r === 0
+              const Cell = isHeader ? 'th' : 'td'
+              return (
+                <tr key={r}>
+                  {cells.map((c, cIdx) => (
+                    <Cell key={cIdx}
+                      dangerouslySetInnerHTML={{ __html: formatInline(c) }}
+                    />
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )
+    }
+    return renderLine(block.content, idx)
+  })
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
 const LOADING_STATUSES = [
   '🌾 Checking your fields…',
@@ -103,8 +183,7 @@ const PROCESSING_STATUSES = [
 
 function beautifyResponse(text) {
   return text
-    .replace(/^##\s+/gm, '**')
-    .replace(/^###\s+/gm, '**')
+    .replace(/^#{2,6}\s+(?:\d+\.\s*)?(.*)$/gm, '**$1**')
     .split('\n')
     .map(line => {
       const t = line.trim()
@@ -519,7 +598,7 @@ function App() {
                   <div className="kisan-bubble kisan-bubble--ai">
                     <div className="kisan-bubble-label">🌱 KisanAI</div>
                     <div className="kisan-bubble-body">
-                      {msg.text.split('\n').map((line, j) => renderLine(line, j))}
+                      {renderContent(msg.text)}
                     </div>
                   </div>
                 )}
