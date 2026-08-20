@@ -1,0 +1,4 @@
+[build]
+  base = "kisanai-frontend"
+  command = "npm run build"
+  publish = "dist"
